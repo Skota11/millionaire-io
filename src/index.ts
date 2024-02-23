@@ -1,7 +1,13 @@
 import { serve } from "https://deno.land/std/http/server.ts";
 import { Server } from "https://deno.land/x/socket_io/mod.ts";
+import { Application } from "https://deno.land/x/oak/mod.ts";
 
-const io = new Server();
+const app = new Application();
+
+const io = new Server({cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }});
 
 const data = new Map();
 const roomsInviteNumber = new Map();
@@ -45,6 +51,12 @@ io.on("connection", (socket) => {
             io.to(socket.id).emit("roomId", "invalidNumber")
         }
     })
+    socket.on("getInviteNumber", (msg) => {
+        const socketRoom = Array.from(socket.rooms)[1]
+        if (msg == socketRoom) {
+            io.to(msg).emit("gameStart")
+        }
+    })
     socket.on("disconnect", () => {
         if (socket.data.room !== undefined) {
             io.to(socket.data.room).emit("Leave", { id: socket.id, username: socket.data.username })
@@ -52,6 +64,10 @@ io.on("connection", (socket) => {
     });
 });
 
-await serve(io.handler(), {
+const handler = io.handler(async (req) => {
+    return await app.handle(req) || new Response(null, { status: 404 });
+  });
+  
+  await serve(handler, {
     port: 8000,
-});
+  });
