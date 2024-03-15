@@ -12,5 +12,4 @@ export const cards = [{num : 0 , suit : 0},
     {num : 11 , suit : 1}, {num : 11 , suit : 2}, {num : 11 , suit : 3}, {num : 11 , suit : 4},
     {num : 12 , suit : 1}, {num : 12 , suit : 2}, {num : 12 , suit : 3}, {num : 12 , suit : 4},
     {num : 13 , suit : 1}, {num : 13 , suit : 2}, {num : 13 , suit : 3}, {num : 13 , suit : 4}]
-
     
