@@ -11,20 +11,23 @@ const io = new Server({cors: {
     methods: ["GET", "POST"]
   }});
 
-const data = new Map();
+const GameData = new Map();
 const roomsInviteNumber = new Map();
 const roomsId = new Map();
 const startingRoom = new Map();
 const PlayerCards = new Map();
 const PlayerNames = new Map();
 const RoomsTurn = new Map();
+const RoomsPass = new Map();
+const RoomsPlayer = new Map();
+const winThrougthPlayer = new Map();
 const CardsNumber = new Map();
 
 io.on("connection", (socket) => {
     socket.on("createNewRoom", (msg) => {
         const id = crypto.randomUUID();
         io.to(socket.id).emit("NewRoomId", { id: id });
-        data.set(id, msg)
+        GameData.set(id, msg)
         startingRoom.set(id , false)
     })
     socket.on("joinRoom", (msg) => {
@@ -33,7 +36,7 @@ io.on("connection", (socket) => {
         }
         socket.join(msg.roomId);
         const socketRoom = Array.from(socket.rooms)[1]
-        io.to(socketRoom).emit("Join", { username: msg.username, roomSettings: data.get(socketRoom), id: socketRoom })
+        io.to(socketRoom).emit("Join", { username: msg.username, roomSettings: GameData.get(socketRoom), id: socketRoom })
         socket.data.username = msg.username;
         socket.data.room = socketRoom
 
@@ -66,8 +69,12 @@ io.on("connection", (socket) => {
         io.to(socket.id).emit("getRoomMember" , Array.from(members.get(msg)))
     })
     socket.on("gameStart", (msg) => {
-        if (!startingRoom.get(msg) && io.of("/").adapter.rooms.get(msg).size !== 1) {
-            const socketRoom = Array.from(socket.rooms)[1]
+        if (io.of("/").adapter.rooms.get(msg).size <= 2) {
+            io.to(socket.id).emit("gameStart" , {already : false , not : true})
+    }else if(startingRoom.get(msg)) {
+        io.to(socket.id).emit("gameStart" , {already : true , not : false})
+    }else {
+        const socketRoom = Array.from(socket.rooms)[1]
         if (msg == socketRoom) {
             //gameStart
             io.to(socketRoom).emit("gameStart" , {already : false , not : false})
@@ -113,11 +120,8 @@ io.on("connection", (socket) => {
 
             io.to(socketRoom).emit("Turn" , array[0])
             RoomsTurn.set(socketRoom , array[0]);
+            RoomsPlayer.set(socketRoom , array)
         }
-    }else if(io.of("/").adapter.rooms.get(msg).size == 1) {
-        io.to(socket.id).emit("gameStart" , {already : false , not : true})
-    }else {
-        io.to(socket.id).emit("gameStart" , {already : true , not : false})
     }
     })
     socket.on("getPlayerName", (id) => {
@@ -128,18 +132,30 @@ io.on("connection", (socket) => {
     })
     socket.on("Play" , (msg) => {
         const socketRoom = Array.from(socket.rooms)[1]
+        const array = RoomsPlayer.get(socketRoom)
         if (RoomsTurn.get(socketRoom) == msg.sid) {
             io.to(socketRoom).emit("Play" , msg)
-            if (msg.pass!) {
-                if (data.get(socketRoom)["eight"] && msg.cards[0].num == 8) {
+            if (!msg.pass && (GameData.get(socketRoom)["eight"] && msg?.cards[0]?.num == 8)) {
                     io.to(socketRoom).emit("Turn" , msg.sid)
                     io.to(socketRoom).emit("TurnReset")
                     RoomsTurn.set(socketRoom , msg.sid)
-                }
+            }else if (msg.spade){
+                io.to(socketRoom).emit("Turn" , msg.sid)
+                    io.to(socketRoom).emit("TurnReset")
+                    RoomsTurn.set(socketRoom , msg.sid)
+            }else {
+            if (msg.pass) {
+                RoomsPass.set(socketRoom , RoomsPass.get(socketRoom) + 1)
+                console.log("pass" , RoomsPass.get(socketRoom))
+                console.log(array.length - 1)
+            }else {
+                RoomsPass.set(socketRoom , 0)
             }
-            else {
-            const members = io.of("/").adapter.rooms;
-            const array = Array.from(members.get(socketRoom));
+            if (RoomsPass.get(socketRoom) == array.length - 1) {
+                io.to(socketRoom).emit("TurnReset")
+                console.log("reset")
+                RoomsPass.set(socketRoom , 0)
+            }
             const turnIndex = array.indexOf(msg.sid);
             let turnNextIndex;
             if (array.length - 1 == turnIndex) {
@@ -149,7 +165,8 @@ io.on("connection", (socket) => {
             }
             io.to(socketRoom).emit("Turn" , array[turnNextIndex])
             RoomsTurn.set(socketRoom , array[turnNextIndex])
-        }
+            }
+
             if (!msg.pass) {
                 const playerCard = PlayerCards.get(msg.sid)
                 msg.cards.map((card:any) =>{
@@ -157,10 +174,12 @@ io.on("connection", (socket) => {
                     playerCard.splice(index , 1)
                 })
                 PlayerCards.set(msg.sid , playerCard)
-                console.log(playerCard)
             }
-            
-
+            if (PlayerCards.get(msg.sid).length == 0) {
+                array.splice(array.indexOf(msg.sid) , 1)
+                RoomsPlayer.set(socketRoom , array)
+                io.to(msg.sid).emit("winThrougth" , msg.sid)
+            }
             CardsNumber.set(msg.sid , PlayerCards.get(msg.sid).length)
             io.to(msg.sid).emit("getCards" , PlayerCards.get(msg.sid))
         }
